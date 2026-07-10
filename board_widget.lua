@@ -41,7 +41,7 @@ function CryptogramBoardWidget:init()
     self:_layout()
 
     self.ges_events = {
-        CipherTap = { GestureRange:new{ ges = "tap", range = self.dimen } },
+        CipherTap = { GestureRange:new{ ges = "tap", range = function() return self.paint_rect end } },
     }
 end
 
