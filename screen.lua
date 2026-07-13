@@ -107,10 +107,10 @@ function CryptogramScreen:buildLayout()
     board_max_h = math.max(board_max_h, 60)
 
     self.board_widget = CryptogramBoardWidget:new{
-        board       = self.board,
-        max_width   = board_max_w,
-        max_height  = board_max_h,
-        onCipherTap = function(ch) self:onCipherTap(ch) end,
+        board             = self.board,
+        max_width         = board_max_w,
+        max_height        = board_max_h,
+        cipherTapCallback = function(ch) self:onCipherTap(ch) end,
     }
 
     local board_frame = FrameContainer:new{

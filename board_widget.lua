@@ -19,10 +19,10 @@ local C_DIM      = Blitbuffer.COLOR_GRAY_7
 -- ---------------------------------------------------------------------------
 
 local CryptogramBoardWidget = InputContainer:extend{
-    board       = nil,
-    max_width   = 300,
-    max_height  = 200,
-    onCipherTap = nil,
+    board             = nil,
+    max_width         = 300,
+    max_height        = 200,
+    cipherTapCallback = nil,
 }
 
 function CryptogramBoardWidget:init()
@@ -99,7 +99,7 @@ function CryptogramBoardWidget:_layout()
     self.paint_rect = nil
 end
 
-function CryptogramBoardWidget:onCipherTap(ges)
+function CryptogramBoardWidget:onCipherTap(_, ges)
     if not self.paint_rect then return true end
     local rect = self.paint_rect
     local lx = ges.pos.x - rect.x
@@ -122,7 +122,7 @@ function CryptogramBoardWidget:onCipherTap(ges)
         if col_idx >= 1 and col_idx <= #row then
             local token = row[col_idx]
             if token and token.ch ~= " " and token.ch >= "A" and token.ch <= "Z" then
-                if self.onCipherTap then self.onCipherTap(token.ch) end
+                if self.cipherTapCallback then self.cipherTapCallback(token.ch) end
             end
         end
     end
