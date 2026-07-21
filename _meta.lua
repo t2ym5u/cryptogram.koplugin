@@ -3,5 +3,5 @@ return {
     name        = "cryptogram",
     fullname    = _("Cryptogram"),
     description = _("Substitution cipher word puzzle"),
-    version     = "1.1.5",
+    version     = "1.1.6",
 }
