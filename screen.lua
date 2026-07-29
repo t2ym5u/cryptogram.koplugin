@@ -21,17 +21,11 @@ local T               = require("ffi/util").template
 
 local ScreenBase             = require("screen_base")
 local MenuHelper             = require("menu_helper")
+local KeyboardWidget         = lrequire("common/keyboard_widget")
 local CryptogramBoard        = lrequire("board")
 local CryptogramBoardWidget  = lrequire("board_widget")
 
 local DeviceScreen = Device.screen
-
--- Keyboard rows (A-Z)
-local KEY_ROWS = {
-    { "Q","W","E","R","T","Y","U","I","O","P" },
-    { "A","S","D","F","G","H","J","K","L" },
-    { "Z","X","C","V","B","N","M" },
-}
 
 -- ---------------------------------------------------------------------------
 -- CryptogramScreen
@@ -122,22 +116,10 @@ function CryptogramScreen:buildLayout()
     }
 
     -- Keyboard
-    local key_rows_cfg = {}
-    for _, row in ipairs(KEY_ROWS) do
-        local btns = {}
-        for _, key in ipairs(row) do
-            local k = key
-            btns[#btns + 1] = {
-                text     = k,
-                callback = function() self:onKeyPress(k) end,
-            }
-        end
-        key_rows_cfg[#key_rows_cfg + 1] = btns
-    end
-    self.keyboard_widget = ButtonTable:new{
-        shrink_unneeded_width = true,
-        width   = btn_width,
-        buttons = key_rows_cfg,
+    self.keyboard_widget = KeyboardWidget.build{
+        width  = btn_width,
+        layout = (self.board.lang == "fr") and "azerty" or "qwerty",
+        onKey  = function(k) self:onVirtualKey(k) end,
     }
 
     if is_landscape then
@@ -181,7 +163,7 @@ function CryptogramScreen:onCipherTap(ch)
     self.plugin:saveState(self.board:serialize())
 end
 
-function CryptogramScreen:onKeyPress(key)
+function CryptogramScreen:onVirtualKey(key)
     if not self.board.selected_cipher then
         self:updateStatus(_("Tap a cipher letter first."))
         return
