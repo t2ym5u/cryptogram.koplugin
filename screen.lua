@@ -77,6 +77,8 @@ function CryptogramScreen:buildLayout()
         and math.max(math.floor(sw * 0.38), 120)
         or  math.floor(sw * 0.9)
 
+    self.status_text:setMaxWidth(btn_width)
+
     local title_bar = self:buildTitleBar(_("Cryptogram"), function()
         return {
             { text = _("New game"),     callback = function() self:onNewGame() end },
