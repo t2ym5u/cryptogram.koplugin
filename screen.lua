@@ -7,7 +7,6 @@ local function lrequire(name)
     return package.loaded[key]
 end
 
-local ButtonTable     = require("ui/widget/buttontable")
 local Device          = require("device")
 local FrameContainer  = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
@@ -39,6 +38,7 @@ Decode the encrypted message by cracking the letter substitution cipher.
 Each letter has been replaced by another letter.
 The same substitution is used consistently throughout the message.
 Tap a cipher letter to select it, then tap the keyboard to type your guess for the real letter.
+Typing the same guess again erases it; Clear erases every guess.
 Use logic and common word patterns to deduce the full message.
 ]])
 
@@ -49,6 +49,7 @@ Décodez le message chiffré en craquant son chiffre par substitution de lettres
 
 Chaque lettre a été remplacée par une autre lettre, de façon cohérente dans tout le texte.
 Appuyez sur une lettre chiffrée pour la sélectionner, puis tapez votre proposition.
+Retapez la même lettre pour l'effacer ; « Effacer tout » retire toutes les propositions.
 Utilisez les motifs des mots et la fréquence des lettres pour déduire le message complet.
 ]]
 
@@ -69,15 +70,7 @@ function CryptogramScreen:serializeState()
 end
 
 function CryptogramScreen:buildLayout()
-    local sw           = DeviceScreen:getWidth()
-    local sh = DeviceScreen:getHeight()
     local is_landscape = self:isLandscape()
-
-    local btn_width = is_landscape
-        and math.max(math.floor(sw * 0.38), 120)
-        or  math.floor(sw * 0.9)
-
-    self.status_text:setMaxWidth(btn_width)
 
     local title_bar = self:buildTitleBar(_("Cryptogram"), function()
         return {
@@ -87,75 +80,59 @@ function CryptogramScreen:buildLayout()
         }
     end)
 
-    local action_buttons = ButtonTable:new{
-        shrink_unneeded_width = true,
-        width   = btn_width,
-        buttons = {{
+    local controls_w = self:getControlsWidth()
+    self.status_text:setMaxWidth(controls_w)
+    self.keyboard_widget = KeyboardWidget.build{
+        width      = controls_w,
+        key_height = DeviceScreen:scaleBySize(52),
+        onKey      = function(k) self:onVirtualKey(k) end,
+    }
+    local controls = VerticalGroup:new{
+        align = "center",
+        self.status_text,
+        VerticalSpan:new{ width = Size.span.vertical_large },
+        self.keyboard_widget,
+        VerticalSpan:new{ width = Size.span.vertical_default },
+        self:buildActionBar({
             { text = _("Clear"), callback = function() self:onClearAll() end },
-        }},
+        }),
     }
 
-    local margin      = Size.margin.default
-    local padding     = Size.padding.default
-    local frame_extra = (padding + margin) * 2
-
-    local board_max_w = is_landscape and math.floor(sw * 0.55) or sw - frame_extra
-    local board_max_h = math.floor(sh * 0.35)
-    board_max_w = math.max(board_max_w, 80)
-    board_max_h = math.max(board_max_h, 60)
-
+    -- The phrase gets the whole board budget: the widget picks the largest
+    -- letter cells for which the word-wrapped text still fits.
+    local frame_pad   = Size.padding.large
+    local frame_extra = 2 * (frame_pad + Size.border.window)
+    local budget_w, budget_h = self:getBoardBudget(title_bar, controls)
     self.board_widget = CryptogramBoardWidget:new{
         board             = self.board,
-        max_width         = board_max_w,
-        max_height        = board_max_h,
+        max_width         = math.max(budget_w - frame_extra, 80),
+        max_height        = math.max(budget_h - frame_extra, 60),
         cipherTapCallback = function(ch) self:onCipherTap(ch) end,
     }
 
     local board_frame = FrameContainer:new{
-        padding = padding,
-        margin  = margin,
+        padding = frame_pad,
+        margin  = 0,
         self.board_widget,
     }
 
-    -- Keyboard
-    self.keyboard_widget = KeyboardWidget.build{
-        width  = btn_width,
-        layout = (self.board.lang == "fr") and "azerty" or "qwerty",
-        onKey  = function(k) self:onVirtualKey(k) end,
-    }
-
     if is_landscape then
-        local right = VerticalGroup:new{
-            align = "center",
-            self.status_text,
-            VerticalSpan:new{ width = Size.span.vertical_large },
-            self.keyboard_widget,
-            VerticalSpan:new{ width = Size.span.vertical_large },
-            action_buttons,
-        }
         local content = HorizontalGroup:new{
-            align  = "center",
+            align = "center",
             board_frame,
-            HorizontalSpan:new{ width = Size.span.horizontal_default },
-            right,
+            HorizontalSpan:new{ width = self:getGutter() },
+            controls,
         }
         self:buildLandscapeLayout(title_bar, content)
     else
-        local content = VerticalGroup:new{
-            align = "center",
-            board_frame,
-        }
-        local footer = VerticalGroup:new{
-            align = "center",
-            self.keyboard_widget,
-            VerticalSpan:new{ width = Size.span.vertical_large },
-            action_buttons,
-            VerticalSpan:new{ width = Size.span.vertical_large },
-            self.status_text,
-        }
-        self:buildPortraitLayout(title_bar, content, footer)
+        self:buildPortraitLayout(title_bar, board_frame,
+            VerticalGroup:new{ align = "center", controls, VerticalSpan:new{ width = self:getGutter() } })
     end
     self:updateStatus()
+end
+
+function CryptogramScreen:isRoundOver()
+    return self.board:isComplete()
 end
 
 function CryptogramScreen:onCipherTap(ch)
@@ -170,9 +147,11 @@ function CryptogramScreen:onVirtualKey(key)
         self:updateStatus(_("Tap a cipher letter first."))
         return
     end
+    -- A key pressed on an already solved phrase must not count another win.
+    local was_complete = self.board:isComplete()
     self.board:assignLetter(key)
     self.board_widget:refresh()
-    if self.board:isComplete() then
+    if self.board:isComplete() and not was_complete then
         self.board.wins = self.board.wins + 1
         self:updateStatus(T(_("Solved! Wins: %1"), self.board.wins))
         self.plugin:saveState(self.board:serialize())
@@ -180,11 +159,14 @@ function CryptogramScreen:onVirtualKey(key)
         self:updateStatus()
         self.plugin:saveState(self.board:serialize())
     end
+    -- Re-typing a letter of a solved phrase can un-solve it again.
+    self:refreshActionBar()
 end
 
 function CryptogramScreen:onClearAll()
     self.board:clearAll()
     self.board_widget:refresh()
+    self:refreshActionBar()
     self:updateStatus()
     self.plugin:saveState(self.board:serialize())
 end
@@ -226,26 +208,17 @@ function CryptogramScreen:updateStatus(msg)
     if msg then
         status = msg
     else
-        local sel = self.board.selected_cipher
+        -- The selected letter and its guess are shaded on the board itself;
+        -- naming them here too only overflowed the landscape side panel.
         local decoded, total = self.board:decodedCount()
-        if sel then
-            local assigned = self.board.user_map[sel]
-            if assigned then
-                status = T(_("Selected: %1 = %2  Decoded: %3/%4"),
-                    sel, assigned, decoded, total)
-            else
-                status = T(_("Selected: %1  Decoded: %2/%3"), sel, decoded, total)
-            end
-        else
-            status = T(_("Decoded: %1/%2 letters"), decoded, total)
-        end
+        status = T(_("Decoded: %1/%2"), decoded, total)
     end
     ScreenBase.updateStatus(self, status)
 end
 
 function CryptogramScreen:_langLabel()
     local lang = self.plugin:getSetting("lang", "en")
-    return lang == "fr" and "FR" or "EN"
+    return T(_("Language: %1"), lang == "fr" and "FR" or "EN")
 end
 
 return CryptogramScreen
