@@ -1,4 +1,5 @@
 local Blitbuffer     = require("ffi/blitbuffer")
+local Device         = require("device")
 local Font           = require("ui/font")
 local Geom           = require("ui/geometry")
 local GestureRange   = require("ui/gesturerange")
@@ -14,6 +15,75 @@ local C_BORDER   = Blitbuffer.COLOR_BLACK
 local C_TEXT     = Blitbuffer.COLOR_BLACK
 local C_DIM      = Blitbuffer.COLOR_GRAY_7
 
+local Screen = Device.screen
+
+-- Largest face whose ink for `sample` fits max_w x max_h. Measured unbounded
+-- (a max_width limit cuts the text, so the width test could never fail), ink
+-- height is y_top + y_bottom, and Font:getFace scales its size by the DPI, so
+-- the pixel bound is converted back first.
+local function fitFace(name, sample, max_w, max_h)
+    local lo = 6
+    local hi = math.max(lo, math.floor(max_h * 1000 / Screen:scaleBySize(1000)) * 2)
+    local best = lo
+    while lo <= hi do
+        local mid = math.floor((lo + hi) / 2)
+        local m = RenderText:sizeUtf8Text(0, Screen:getWidth(), Font:getFace(name, mid), sample, true, false)
+        if m.x <= max_w and m.y_top + m.y_bottom <= max_h then
+            best, lo = mid, mid + 1
+        else
+            hi = mid - 1
+        end
+    end
+    return Font:getFace(name, best)
+end
+
+-- Centre `text` on (cx, cy): the baseline sits half the ink height below cy.
+local function drawCentered(bb, face, text, cx, cy, color)
+    local m = RenderText:sizeUtf8Text(0, Screen:getWidth(), face, text, true, false)
+    RenderText:renderUtf8Text(bb, cx - math.floor(m.x / 2),
+        cy + math.floor((m.y_top - m.y_bottom) / 2), face, text, true, false, color)
+end
+
+-- Split the ciphertext into words, keeping each letter's index.
+local function splitWords(text)
+    local words, cur = {}, nil
+    for i = 1, #text do
+        local ch = text:sub(i, i)
+        if ch == " " then
+            cur = nil
+        else
+            if not cur then cur = {}; words[#words + 1] = cur end
+            cur[#cur + 1] = { ch = ch, idx = i }
+        end
+    end
+    return words
+end
+
+-- Greedy word wrap at `cols` cells per line, one blank cell between words.
+-- A word longer than a line is split (never happens with the bundled
+-- phrases, but must not loop). Returns a list of lines, each a list of
+-- tokens ({ch, idx} or false for the gap).
+local function wrapWords(words, cols)
+    local lines, line = {}, {}
+    for _, word in ipairs(words) do
+        local need = #word + (#line > 0 and 1 or 0)
+        if #line > 0 and #line + need > cols then
+            lines[#lines + 1] = line
+            line = {}
+        end
+        if #line > 0 then line[#line + 1] = false end
+        for _, tok in ipairs(word) do
+            if #line >= cols then
+                lines[#lines + 1] = line
+                line = {}
+            end
+            line[#line + 1] = tok
+        end
+    end
+    if #line > 0 then lines[#lines + 1] = line end
+    return lines
+end
+
 -- ---------------------------------------------------------------------------
 -- CryptogramBoardWidget
 -- ---------------------------------------------------------------------------
@@ -26,77 +96,64 @@ local CryptogramBoardWidget = InputContainer:extend{
 }
 
 function CryptogramBoardWidget:init()
-    local cell_w = math.max(12, math.floor(self.max_width / 20))
-    local cell_h = math.max(20, math.floor(self.max_height / 4))
-    -- Each position is 2 rows tall: cipher + decoded
-    -- We'll figure actual height from layout
-    self.cell_w = cell_w
-    self.cell_h = math.floor(cell_h / 2)
-
-    local face_sz = math.max(6, math.floor(self.cell_h * 0.6))
-    self.letter_face  = Font:getFace("smallinfofont", face_sz)
-    local small_sz = math.max(5, math.floor(self.cell_h * 0.5))
-    self.small_face   = Font:getFace("smallinfofont", small_sz)
-
     self:_layout()
+
+    self.letter_face = fitFace("smallinfofont", "W",
+        math.floor(self.cell_w * 0.75), math.floor(self.cell_h * 0.55))
 
     self.ges_events = {
         CipherTap = { GestureRange:new{ ges = "tap", range = function() return self.paint_rect end } },
     }
 end
 
+-- Pick the largest cell for which the word-wrapped phrase fits the room.
+-- Each letter is a cipher cell over a guess cell; lines are centred.
 function CryptogramBoardWidget:_layout()
-    local board     = self.board
-    local ciphered  = board.ciphered
-    local cell_w    = self.cell_w
-    local cell_h    = self.cell_h
-    local row_h     = cell_h * 2 + 4
-    local max_w     = self.max_width
-
-    -- word-wrap into rows
-    local rows    = {}
-    local cur_row = {}
-    local cur_x   = 0
-
-    local i = 1
-    while i <= #ciphered do
-        -- find next word (sequence of letters or space)
-        local ch = ciphered:sub(i, i)
-        if ch == " " then
-            -- space token: wrap if needed, otherwise add gap
-            if cur_x + cell_w > max_w and #cur_row > 0 then
-                rows[#rows + 1] = cur_row
-                cur_row = {}
-                cur_x   = 0
-            end
-            cur_row[#cur_row + 1] = { ch = " ", idx = i }
-            cur_x = cur_x + cell_w
-            i = i + 1
-        else
-            -- single cipher letter
-            if cur_x + cell_w > max_w and #cur_row > 0 then
-                rows[#rows + 1] = cur_row
-                cur_row = {}
-                cur_x   = 0
-            end
-            cur_row[#cur_row + 1] = { ch = ch, idx = i }
-            cur_x = cur_x + cell_w
-            i = i + 1
-        end
+    local words = splitWords(self.board.ciphered or "")
+    local longest, letters = 1, 0
+    for _, w in ipairs(words) do
+        longest = math.max(longest, #w)
+        letters = letters + #w + 1
     end
-    if #cur_row > 0 then rows[#rows + 1] = cur_row end
+    local max_w, max_h = self.max_width, self.max_height
 
-    self.rows  = rows
-    local w    = 0
-    for _, row in ipairs(rows) do
-        local rw = #row * cell_w
-        if rw > w then w = rw end
+    -- A cell is 10% taller than wide; a line is two cells, a hairline gap
+    -- between them and a third of a cell before the next line.
+    local function pitch(cw)
+        local ch = math.floor(cw * 1.1)
+        local inner = math.max(2, math.floor(ch * 0.08))
+        return ch, inner, 2 * ch + inner + math.floor(ch * 0.35)
     end
-    self.w     = math.min(w, max_w)
-    self.h     = #rows * row_h + 4
-    self.row_h = row_h
-    self.dimen = Geom:new{ w = self.w, h = self.h }
+
+    -- No more than ~a dozen cells per line, so a short phrase is not drawn
+    -- at billboard size.
+    local cell_w = math.floor(max_w / math.max(longest, math.min(letters, 12)))
+    local lines
+    while true do
+        lines = wrapWords(words, math.max(1, math.floor(max_w / cell_w)))
+        local _, _, row_h = pitch(cell_w)
+        if cell_w <= 12 or #lines * row_h <= max_h then break end
+        cell_w = cell_w - 1
+    end
+    local cell_h, inner, row_h = pitch(cell_w)
+
+    local w = 0
+    for _, line in ipairs(lines) do w = math.max(w, #line * cell_w) end
+    self.rows   = lines
+    self.cell_w = cell_w
+    self.cell_h = cell_h
+    self.inner  = inner
+    self.row_h  = row_h
+    self.w      = math.min(w, max_w)
+    -- The last line needs no gap below it.
+    self.h      = math.max(1, #lines * row_h - (row_h - 2 * cell_h - inner))
+    self.dimen  = Geom:new{ w = self.w, h = self.h }
     self.paint_rect = nil
+end
+
+-- Left edge of line `ri`, relative to the widget: lines are centred.
+function CryptogramBoardWidget:_lineOffset(ri)
+    return math.floor((self.w - #self.rows[ri] * self.cell_w) / 2)
 end
 
 function CryptogramBoardWidget:onCipherTap(_, ges)
@@ -106,25 +163,18 @@ function CryptogramBoardWidget:onCipherTap(_, ges)
     local ly = ges.pos.y - rect.y
     if lx < 0 or ly < 0 or lx >= self.w or ly >= self.h then return true end
 
-    local row_h  = self.row_h
-    local cell_w = self.cell_w
-    local cell_h = self.cell_h
+    local row_idx = math.floor(ly / self.row_h) + 1
+    local row = self.rows[row_idx]
+    if not row then return true end
+    -- Either half of a letter selects it: the guess cell is as good a
+    -- target as the cipher cell above it.
+    local within_row_y = ly - (row_idx - 1) * self.row_h
+    if within_row_y >= 2 * self.cell_h + self.inner then return true end
 
-    local row_idx = math.floor(ly / row_h) + 1
-    -- only the top half (cipher row) is tappable
-    local within_row_y = ly - (row_idx - 1) * row_h
-    if within_row_y >= cell_h then return true end
-
-    local col_idx = math.floor(lx / cell_w) + 1
-
-    if row_idx >= 1 and row_idx <= #self.rows then
-        local row = self.rows[row_idx]
-        if col_idx >= 1 and col_idx <= #row then
-            local token = row[col_idx]
-            if token and token.ch ~= " " and token.ch >= "A" and token.ch <= "Z" then
-                if self.cipherTapCallback then self.cipherTapCallback(token.ch) end
-            end
-        end
+    local col_idx = math.floor((lx - self:_lineOffset(row_idx)) / self.cell_w) + 1
+    local token = row[col_idx]
+    if token and token.ch >= "A" and token.ch <= "Z" then
+        if self.cipherTapCallback then self.cipherTapCallback(token.ch) end
     end
     return true
 end
@@ -135,47 +185,38 @@ function CryptogramBoardWidget:paintTo(bb, x, y)
     local cell_w   = self.cell_w
     local cell_h   = self.cell_h
     local row_h    = self.row_h
-    local pad      = math.max(1, math.floor(cell_h * 0.08))
+    local half_w   = math.floor(cell_w / 2)
+    local half_h   = math.floor(cell_h / 2)
 
     bb:paintRect(x, y, self.w, self.h, C_BG)
 
+    local function box(bx, by, bg)
+        bb:paintRect(bx + 1, by + 1, cell_w - 2, cell_h - 2, bg)
+        bb:paintRect(bx, by, cell_w, 1, C_BORDER)
+        bb:paintRect(bx, by + cell_h - 1, cell_w, 1, C_BORDER)
+        bb:paintRect(bx, by, 1, cell_h, C_BORDER)
+        bb:paintRect(bx + cell_w - 1, by, 1, cell_h, C_BORDER)
+    end
+
     for ri, row in ipairs(self.rows) do
         local ry = y + (ri - 1) * row_h
+        local ox = x + self:_lineOffset(ri)
         for ci, token in ipairs(row) do
-            local cx = x + (ci - 1) * cell_w
-            local is_letter = token.ch >= "A" and token.ch <= "Z"
-            if is_letter then
+            if token and token.ch >= "A" and token.ch <= "Z" then
+                local cx = ox + (ci - 1) * cell_w
                 local is_sel = token.ch == board.selected_cipher
                 local decoded = board.user_map[token.ch]
 
                 -- cipher cell
-                local bg1 = is_sel and C_SELECTED or C_CELL
-                bb:paintRect(cx + 1, ry + 1, cell_w - 2, cell_h - 2, bg1)
-                bb:paintRect(cx, ry, cell_w, 1, C_BORDER)
-                bb:paintRect(cx, ry + cell_h - 1, cell_w, 1, C_BORDER)
-                bb:paintRect(cx, ry, 1, cell_h, C_BORDER)
-                bb:paintRect(cx + cell_w - 1, ry, 1, cell_h, C_BORDER)
-
-                -- cipher letter
-                local cw_inner = cell_w - 2 * pad
-                local m1 = RenderText:sizeUtf8Text(0, cw_inner, self.letter_face, token.ch, true, false)
-                local tx1 = cx + pad + math.floor((cw_inner - m1.x) / 2)
-                local ty1 = ry + pad + math.floor((cell_h - 2*pad + m1.y_top - m1.y_bottom) / 2)
-                RenderText:renderUtf8Text(bb, tx1, ty1, self.letter_face, token.ch, true, false, C_DIM)
+                box(cx, ry, is_sel and C_SELECTED or C_CELL)
+                drawCentered(bb, self.letter_face, token.ch, cx + half_w, ry + half_h,
+                    is_sel and C_TEXT or C_DIM)
 
                 -- decoded cell
-                local dy = ry + cell_h + 4
-                bb:paintRect(cx + 1, dy + 1, cell_w - 2, cell_h - 2, C_DECODED)
-                bb:paintRect(cx, dy, cell_w, 1, C_BORDER)
-                bb:paintRect(cx, dy + cell_h - 1, cell_w, 1, C_BORDER)
-                bb:paintRect(cx, dy, 1, cell_h, C_BORDER)
-                bb:paintRect(cx + cell_w - 1, dy, 1, cell_h, C_BORDER)
-
+                local dy = ry + cell_h + self.inner
+                box(cx, dy, C_DECODED)
                 if decoded then
-                    local m2 = RenderText:sizeUtf8Text(0, cw_inner, self.letter_face, decoded, true, false)
-                    local tx2 = cx + pad + math.floor((cw_inner - m2.x) / 2)
-                    local ty2 = dy + pad + math.floor((cell_h - 2*pad + m2.y_top - m2.y_bottom) / 2)
-                    RenderText:renderUtf8Text(bb, tx2, ty2, self.letter_face, decoded, true, false, C_TEXT)
+                    drawCentered(bb, self.letter_face, decoded, cx + half_w, dy + half_h, C_TEXT)
                 end
             end
         end

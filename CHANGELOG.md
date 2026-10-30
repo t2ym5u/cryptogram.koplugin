@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-10-30
+
+### Changed
+- The phrase is word-wrapped: a word is never split across two lines, lines
+  are centred, and the letter cells are the largest for which the whole phrase
+  fits the room the controls leave.
+- The on-screen keyboard follows KOReader's language (AZERTY in French, QWERTZ
+  in German) instead of the phrase's language, and its keys are finger-sized.
+- Tapping a letter's guess cell selects it too, not only the cipher cell above
+  it.
+- The status line reads "Decoded: 12/20"; the selected letter and its guess
+  are already shaded on the board.
+- Once the phrase is solved, the action bar shows "New game" in place of
+  Clear.
+- The language entry in the title-bar menu reads "Language: EN" instead of a
+  bare "EN". The rules say that typing the same guess again erases it.
+
+### Fixed
+- Pressing a key on an already solved phrase counted another win.
+- Letters were scaled by DPI twice and overflowed their cells on high-DPI
+  screens; they are now fitted to them.
+
 ## [1.1.18] - 2026-10-07
 
 ### Fixed

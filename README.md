@@ -31,9 +31,9 @@ Decode an encrypted message by cracking its letter substitution cipher. Each let
 |--------|-----|
 | Select a cipher letter | Tap it |
 | Assign a plain letter | Tap the keyboard |
-| Erase an assignment | Tap **Erase** |
-| Check progress | Tap **Check** |
-| New puzzle | Tap **New** |
+| Erase an assignment | Type the same letter again |
+| Erase every assignment | Tap **Clear** |
+| New puzzle | Tap **New game** |
 | Show rules | Tap **Rules** |
 
 ## License
