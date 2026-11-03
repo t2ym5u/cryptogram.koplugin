@@ -8,10 +8,12 @@ local function lrequire(name)
 end
 
 local Device          = require("device")
+local Font            = require("ui/font")
 local FrameContainer  = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan  = require("ui/widget/horizontalspan")
 local Size            = require("ui/size")
+local TextBoxWidget   = require("ui/widget/textboxwidget")
 local UIManager       = require("ui/uimanager")
 local VerticalGroup   = require("ui/widget/verticalgroup")
 local VerticalSpan    = require("ui/widget/verticalspan")
@@ -58,9 +60,11 @@ local CryptogramScreen = ScreenBase:extend{}
 function CryptogramScreen:init()
     local state = self.plugin:loadState()
     local lang  = self.plugin:getSetting("lang", "en")
-    self.board  = CryptogramBoard:new{ lang = lang }
+    -- defer: a saved game is restored without drawing (and marking as
+    -- seen) a phrase that would be thrown away at once.
+    self.board  = CryptogramBoard:new{ lang = lang, plugin = self.plugin, defer = true }
     if not self.board:load(state) then
-        -- fresh game
+        self.board:newGame()
     end
     ScreenBase.init(self)
 end
@@ -103,17 +107,35 @@ function CryptogramScreen:buildLayout()
     local frame_pad   = Size.padding.large
     local frame_extra = 2 * (frame_pad + Size.border.window)
     local budget_w, budget_h = self:getBoardBudget(title_bar, controls)
+
+    -- Once solved, the phrase's source (author, work…) shows under it.
+    local source_box, source_h = nil, 0
+    if self.board.source and self.board:isComplete() then
+        source_box = TextBoxWidget:new{
+            text      = "— " .. self.board.source,
+            face      = Font:getFace("cfont", 20),
+            width     = math.max(budget_w - frame_extra, 80),
+            alignment = "center",
+        }
+        source_h = source_box:getSize().h + Size.span.vertical_large
+    end
+
     self.board_widget = CryptogramBoardWidget:new{
         board             = self.board,
         max_width         = math.max(budget_w - frame_extra, 80),
-        max_height        = math.max(budget_h - frame_extra, 60),
+        max_height        = math.max(budget_h - frame_extra - source_h, 60),
         cipherTapCallback = function(ch) self:onCipherTap(ch) end,
     }
 
     local board_frame = FrameContainer:new{
         padding = frame_pad,
         margin  = 0,
-        self.board_widget,
+        source_box and VerticalGroup:new{
+            align = "center",
+            self.board_widget,
+            VerticalSpan:new{ width = Size.span.vertical_large },
+            source_box,
+        } or self.board_widget,
     }
 
     if is_landscape then
@@ -150,17 +172,20 @@ function CryptogramScreen:onVirtualKey(key)
     -- A key pressed on an already solved phrase must not count another win.
     local was_complete = self.board:isComplete()
     self.board:assignLetter(key)
-    self.board_widget:refresh()
-    if self.board:isComplete() and not was_complete then
+    local is_complete = self.board:isComplete()
+    if is_complete and not was_complete then
         self.board.wins = self.board.wins + 1
-        self:updateStatus(T(_("Solved! Wins: %1"), self.board.wins))
-        self.plugin:saveState(self.board:serialize())
-    else
-        self:updateStatus()
-        self.plugin:saveState(self.board:serialize())
     end
-    -- Re-typing a letter of a solved phrase can un-solve it again.
-    self:refreshActionBar()
+    self.plugin:saveState(self.board:serialize())
+    if is_complete ~= was_complete then
+        -- Solving shows the source under the phrase (re-typing a letter of
+        -- a solved phrase un-solves it and hides it again): new layout.
+        self:buildLayout()
+        UIManager:setDirty(self, function() return "ui", self.dimen end)
+    else
+        self.board_widget:refresh()
+        self:updateStatus()
+    end
 end
 
 function CryptogramScreen:onClearAll()
@@ -207,6 +232,8 @@ function CryptogramScreen:updateStatus(msg)
     local status
     if msg then
         status = msg
+    elseif self.board:isComplete() then
+        status = T(_("Solved! Wins: %1"), self.board.wins)
     else
         -- The selected letter and its guess are shaded on the board itself;
         -- naming them here too only overflowed the landscape side panel.

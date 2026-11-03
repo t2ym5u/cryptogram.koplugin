@@ -12,10 +12,9 @@ Decode an encrypted message by cracking its letter substitution cipher. Each let
 
 ## Features
 
-- **Curated puzzle library** — multiple encrypted quotes to solve
-- **Letter frequency hint** — shows how often each cipher letter appears
+- **Over 500 phrases per language (FR / EN)** — proverbs, famous quotations, film lines, book titles, songs and nursery rhymes; the source (author, work) is shown once a phrase is solved
+- **No repeats** — a phrase only comes back once every other phrase of its language has been played, across sessions too
 - **Auto-fill** — when a letter is identified, all its occurrences update instantly
-- **Check** — highlights incorrect letter assignments
 - **Auto-save** — puzzle state saved and restored on next launch
 
 ## Installation
@@ -23,7 +22,7 @@ Decode an encrypted message by cracking its letter substitution cipher. Each let
 1. Download `cryptogram.koplugin.zip` from the [latest release](../../releases/latest).
 2. Extract into the `plugins/` folder of your KOReader data directory.
 3. Restart KOReader.
-4. Open the menu → **Tools** → **Cryptogram**.
+4. Open the menu → **Tools** → **Games** → **Cryptogram**.
 
 ## Controls
 
@@ -35,6 +34,14 @@ Decode an encrypted message by cracking its letter substitution cipher. Each let
 | Erase every assignment | Tap **Clear** |
 | New puzzle | Tap **New game** |
 | Show rules | Tap **Rules** |
+
+## Phrases
+
+The phrases live in `data/phrases_fr.lua` and `data/phrases_en.lua` as
+`{ text, source }` pairs: text in capitals without accents (letters, spaces,
+apostrophes and hyphens), 12 to 64 characters. Only well-established
+attributions are used; `test_phrases_spec.lua` checks the format and
+duplicates.
 
 ## License
 
