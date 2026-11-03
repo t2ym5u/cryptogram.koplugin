@@ -44,6 +44,16 @@ local function drawCentered(bb, face, text, cx, cy, color)
         cy + math.floor((m.y_top - m.y_bottom) / 2), face, text, true, false, color)
 end
 
+-- Draw `text` centred horizontally on cx, on the baseline a capital letter
+-- centred on cy would have: an apostrophe then sits up high and a hyphen at
+-- mid-height, as in print.
+local function drawOnCapBaseline(bb, face, text, cx, cy, color)
+    local cap = RenderText:sizeUtf8Text(0, Screen:getWidth(), face, "W", true, false)
+    local m = RenderText:sizeUtf8Text(0, Screen:getWidth(), face, text, true, false)
+    RenderText:renderUtf8Text(bb, cx - math.floor(m.x / 2),
+        cy + math.floor((cap.y_top - cap.y_bottom) / 2), face, text, true, false, color)
+end
+
 -- Split the ciphertext into words, keeping each letter's index.
 local function splitWords(text)
     local words, cur = {}, nil
@@ -218,6 +228,13 @@ function CryptogramBoardWidget:paintTo(bb, x, y)
                 if decoded then
                     drawCentered(bb, self.letter_face, decoded, cx + half_w, dy + half_h, C_TEXT)
                 end
+            elseif token then
+                -- An apostrophe or a hyphen is given away, unboxed, on
+                -- both rows ("C'EST", "VAS-Y").
+                local cx = ox + (ci - 1) * cell_w
+                drawOnCapBaseline(bb, self.letter_face, token.ch, cx + half_w, ry + half_h, C_DIM)
+                drawOnCapBaseline(bb, self.letter_face, token.ch, cx + half_w,
+                    ry + cell_h + self.inner + half_h, C_TEXT)
             end
         end
     end

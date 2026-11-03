@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-11-03
+
+### Added
+- Over 500 phrases per language (was ~140): proverbs, famous quotations,
+  lines from films, book titles, songs and nursery rhymes — in French,
+  Molière, La Fontaine, Hugo, Corneille, de Gaulle, Pagnol, Tintin,
+  comptines…
+- Once a phrase is solved, its source (author and work) is shown under it.
+- Apostrophes and hyphens are shown as they are ("C'EST", "VAS-Y") instead
+  of being turned into spaces.
+
+### Changed
+- A phrase does not come back until every other phrase of that language
+  has been played, even across sessions (the history is kept per language).
+
 ## [1.2.2] - 2026-11-02
 
 ### Changed
