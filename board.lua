@@ -1,5 +1,7 @@
 -- Phrases live in data/phrases_<lang>.lua ({ text, source } pairs), loaded
--- the first time a language is played. Draws go through the shared
+-- the first time a language is played, one language at a time (switching
+-- drops the other), and dropped by CryptogramBoard.release() when the game
+-- screen closes (quick to read again). Draws go through the shared
 -- SeenHistory when the board is given the plugin (its settings hold the
 -- history), so a phrase does not come back before the whole list has been
 -- played; without a plugin (tests, old callers) they are plain random.
@@ -12,7 +14,7 @@ local PHRASES = {}
 local function loadPhrases(lang)
     if lang ~= "fr" then lang = "en" end
     if not PHRASES[lang] then
-        PHRASES[lang] = assert(loadfile(_dir .. "data/phrases_" .. lang .. ".lua"))()
+        PHRASES = { [lang] = assert(loadfile(_dir .. "data/phrases_" .. lang .. ".lua"))() }
     end
     return PHRASES[lang]
 end
@@ -224,6 +226,20 @@ function CryptogramBoard:load(data)
     for _, pair in ipairs(data.decipher_map or {}) do self.decipher_map[pair[1]] = pair[2] end
     for _, pair in ipairs(data.user_map     or {}) do self.user_map[pair[1]]     = pair[2] end
     return true
+end
+
+-- Drops the loaded phrase list (called when the game screen closes); the
+-- next game reads its language's list again.
+function CryptogramBoard.release()
+    PHRASES = {}
+end
+
+-- The languages whose phrase list is loaded now (for the specs).
+function CryptogramBoard.loadedLanguages()
+    local out = {}
+    for lang in pairs(PHRASES) do out[#out + 1] = lang end
+    table.sort(out)
+    return out
 end
 
 return CryptogramBoard

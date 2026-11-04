@@ -116,3 +116,21 @@ describe("cryptogram phrases", function()
         assert.is_true(b:isComplete())
     end)
 end)
+
+-- The phrase list loads with the first game of a language, only that
+-- language's, and release() (the screen closing) drops it.
+describe("cryptogram phrase loading", function()
+    it("loads nothing on require, one language on demand, none after release", function()
+        local Board = dofile(DIR .. "board.lua")
+        assert.are.same({}, Board.loadedLanguages())
+        local fr = Board.phrases("fr")
+        assert.are.same({ "fr" }, Board.loadedLanguages())
+        Board.phrases("en")
+        assert.are.same({ "en" }, Board.loadedLanguages())
+        Board.release()
+        assert.are.same({}, Board.loadedLanguages())
+        -- Read again, the same list in the same order (no-repeat history).
+        assert.are.same(fr, Board.phrases("fr"))
+        Board.release()
+    end)
+end)
