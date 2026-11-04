@@ -55,7 +55,11 @@ Retapez la même lettre pour l'effacer ; « Effacer tout » retire toutes les pr
 Utilisez les motifs des mots et la fréquence des lettres pour déduire le message complet.
 ]]
 
-local CryptogramScreen = ScreenBase:extend{}
+-- A wider landscape side panel than the fleet default: the keyboard is the
+-- whole control, and its ten keys a row need the width (common/screen_base).
+local CryptogramScreen = ScreenBase:extend{
+    landscape_controls_ratio = 0.45,
+}
 
 function CryptogramScreen:init()
     local state = self.plugin:loadState()
@@ -246,6 +250,12 @@ end
 function CryptogramScreen:_langLabel()
     local lang = self.plugin:getSetting("lang", "en")
     return T(_("Language: %1"), lang == "fr" and "FR" or "EN")
+end
+
+-- The phrase lists are only needed while a game is open: drop them when the
+-- screen closes (the next game reads its language's list again).
+function CryptogramScreen:onCloseWidget()
+    CryptogramBoard.release()
 end
 
 return CryptogramScreen
