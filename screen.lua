@@ -63,7 +63,7 @@ local CryptogramScreen = ScreenBase:extend{
 
 function CryptogramScreen:init()
     local state = self.plugin:loadState()
-    local lang  = self.plugin:getSetting("lang", "en")
+    local lang  = self.plugin:getLang({ "fr", "en" })
     -- defer: a saved game is restored without drawing (and marking as
     -- seen) a phrase that would be thrown away at once.
     self.board  = CryptogramBoard:new{ lang = lang, plugin = self.plugin, defer = true }
@@ -201,7 +201,7 @@ function CryptogramScreen:onClearAll()
 end
 
 function CryptogramScreen:onNewGame()
-    local lang = self.plugin:getSetting("lang", "en")
+    local lang = self.plugin:getLang({ "fr", "en" })
     self.board.lang = lang
     local wins = self.board.wins
     self.board:newGame()
@@ -219,10 +219,10 @@ function CryptogramScreen:openLangMenu()
     MenuHelper.openPickerMenu{
         title      = _("Language"),
         items      = items,
-        current_id = self.plugin:getSetting("lang", "en"),
+        current_id = self.plugin:getLang({ "fr", "en" }),
         parent     = self,
         on_select  = function(lang)
-            self.plugin:saveSetting("lang", lang)
+            self.plugin:setLang(lang)
             self.board.lang = lang
             if self.lang_btn then
                 self.lang_btn:setText(self:_langLabel(), self.lang_btn.width)
@@ -248,7 +248,7 @@ function CryptogramScreen:updateStatus(msg)
 end
 
 function CryptogramScreen:_langLabel()
-    local lang = self.plugin:getSetting("lang", "en")
+    local lang = self.plugin:getLang({ "fr", "en" })
     return T(_("Language: %1"), lang == "fr" and "FR" or "EN")
 end
 
