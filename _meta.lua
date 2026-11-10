@@ -2,5 +2,5 @@ local _ = require("gettext")
 return {
     fullname    = _("Cryptogram"),
     description = _("Substitution cipher word puzzle"),
-    version     = "1.4.2",
+    version     = "1.5.0",
 }

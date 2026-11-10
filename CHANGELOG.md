@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0] - 2026-11-10
+
+### Added
+- Twice as many French phrases: 1,061 (was 534), mostly proverbs, sayings
+  and expressions, plus titles of tales, fables and novels and famous
+  lines. The game still deals every phrase once before any repeats.
+
 All notable changes to this project will be documented in this file.
 
 ## [1.4.2] - 2026-11-09
